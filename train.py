@@ -27,7 +27,8 @@ parser.add_argument('-l', '--load', help='Load checkpoint from this file.',
 parser.add_argument('-s', '--save', help='Save checkpoint to this file.',
                     type=str, default=None)
 parser.add_argument('--schedule',
-                    help='Schedule name as defined in schedule.yaml.',
+                    help='Learning rate schedule name as defined in\
+                    schedule.yaml.',
                     type=str, default=None)
 parser.add_argument('--lr',
                     help='Learning rate. Ignored if schedule is passed.',
