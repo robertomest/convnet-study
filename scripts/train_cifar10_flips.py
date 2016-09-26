@@ -69,7 +69,7 @@ model.compile(optimizer=sgd, loss='categorical_crossentropy',
 steps = [25*i for i in range(1, 10)]
 rates = [0.1/2**i for i in range(10)]
 
-schedule = Step(steps, rates, verbose=1)
+schedule = Step(steps, rates, verbose=1, schedule=schedule)
 model_cbk = ModelCheckpoint(file_name + '.h5')
 meta_cbk = MetaCheckpoint(file_name + '.meta')
 
