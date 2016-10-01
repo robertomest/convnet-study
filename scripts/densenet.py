@@ -7,9 +7,11 @@ from keras.layers.convolutional import Convolution2D
 from keras.layers.pooling import AveragePooling2D, GlobalAveragePooling2D
 from keras.layers.normalization import BatchNormalization
 from keras.regularizers import l2
+
 from keras.optimizers import SGD
 from keras.callbacks import ModelCheckpoint
 from keras.preprocessing.image import ImageDataGenerator
+
 from rme.datasets import cifar10
 from rme.callbacks import Step, MetaCheckpoint
 
@@ -96,7 +98,7 @@ if __name__ == '__main__':
     if augmented:
         file_name = 'densenet_augmented'
         dropout = 0.
-	print('Using aumented dataset.')
+	print('Using augmented dataset.')
     else:
         file_name = 'densenet'
         dropout = 0.2

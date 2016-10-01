@@ -1,12 +1,10 @@
-# convnet-study
-
 # convet-study: A study of ConvNet architectures on small image datasets
 
 This repository contains implementations of some architectures that I find interesting and get good results on small image datasets (mostly CIFAR-10).
 
 ## Requirements
 
-This code runs on [Keras](github.com/fchollet/keras) and has been tested with [Tensorflow](tensorflow.org) as backend. You should have a GPU to run this code on a reasonable amount of time.
+This code runs on [Keras](https://www.github.com/fchollet/keras) and has been tested with [Tensorflow](https://www.tensorflow.org) as backend. You should have a GPU to run this code on a reasonable amount of time.
 
 * Python 2.7.
 * Numpy.
