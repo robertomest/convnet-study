@@ -6,7 +6,7 @@ import gzip
 import struct
 
 def one_hotify(labels, nb_classes=None):
-    """
+    '''
     Converts integer labels to one-hot vectors.
 
     Arguments:
@@ -15,7 +15,7 @@ def one_hotify(labels, nb_classes=None):
 
     Returns:
         one_hot_labels: numpy array with shape (batch_size, num_labels).
-    """
+    '''
     size = len(labels)
     if nb_classes is None:
         nb_classes = np.max(labels) + 1
@@ -25,7 +25,7 @@ def one_hotify(labels, nb_classes=None):
     return one_hot_labels
 
 def normalization(data_set, mean=None, std=None, eps=1e-6):
-    """
+    '''
     Normalizes data across each dimension by removing it's mean and dividing
     by it's standard deviation.
 
@@ -40,7 +40,7 @@ def normalization(data_set, mean=None, std=None, eps=1e-6):
         eps: small constant to avoid division by very small numbers during
             normalization. If the a divisor is smaller than eps, no division
             will be carried out on that dimension.
-    """
+    '''
     if mean is None:
         mean = np.mean(data_set, axis=0)
     if std is None:
@@ -51,7 +51,7 @@ def normalization(data_set, mean=None, std=None, eps=1e-6):
     return data_set, mean, std
 
 def global_contrast_normalization(data_set, eps=1e-6):
-    """
+    '''
     Applies global contrast normalization to the input image data.
 
     Arguments:
@@ -64,7 +64,7 @@ def global_contrast_normalization(data_set, eps=1e-6):
     Returns:
         norm_data: numpy array with normalized data. Has the same shape
             as the input.
-      """
+    '''
     if not data_set.size:
         # Simply return if data_set is empty
         return data_set
@@ -83,7 +83,7 @@ def global_contrast_normalization(data_set, eps=1e-6):
     return norm_data.reshape(data_shape)
 
 def zca_whitening(data_set, mean=None, whitening=None):
-    """
+    '''
     Applies ZCA whitening the the input data.
 
     Arguments:
@@ -103,7 +103,7 @@ def zca_whitening(data_set, mean=None, whitening=None):
             dimension. If mean was provided as input, this is a copy of it.
         whitening:  numpy array of shape (dim, dim) that contains the whitening
             matrix. If whitening was provided as input, this is a copy of it.
-    """
+    '''
     if not data_set.size:
         # Simply return if data_set is empty
         return data_set, mean, whitening
@@ -129,20 +129,45 @@ def zca_whitening(data_set, mean=None, whitening=None):
     white_data = np.dot(white_data, whitening)
     return white_data.reshape(data_shape), mean, whitening
 
-def per_channel_normalization(data_set):
-        if len(data_set.shape) < 4:
-            raise Exception('Expected 4 dim tensor, found shape: %s'
-                            %str(data_set.shape))
-        mean = np.mean(axis=(0, 1, 2))
-        std = np.std(axis=(0, 1, 2))
+def per_channel_normalization(data_set, mean=None, std=None):
+    '''
+    Applies channel-wise mean and standard deviation normalization.
 
-        data_set -= mean
-        data_set /= std
-        return data_set
+    Arguments:
+        data_set: numpy array of shape (samples, height, width, channels).
+        mean: numpy array of shape (channels,) that contains the mean values
+            of the channels. If None (Default), the mean will be computed
+            from the input data.
+        std: numpy array of shape (channels,) that contains the standard
+            deviation values of the channels. If None (Default), the mean
+            will be computed from the input data.
+
+    Returns:
+        normalized_set: numpy array with normalized data. Has same shape as the
+            input.
+        mean: numpy array of shape (channels,) that contains the values by which
+            the mean of each channel was subtracted by. If a mean was provided
+            as input, this is it.
+        std: numpy array of shape (channels,) that contains the values by which
+            the standard deviation of each channel was divided by. If a mean was
+            provided as input, this is it.
+    '''
+    if len(data_set.shape) < 4:
+        raise Exception('Expected 4 dim tensor, found shape: %s'
+                        %str(data_set.shape))
+    if mean is None:
+        mean = np.mean(data_set, axis=(0, 1, 2))
+    if std is None:
+        std = np.std(data_set, axis=(0, 1, 2))
+
+    normalized_set = data_set - mean
+    normalized_set /= std
+
+    return normalized_set, mean, std
 
 def ops_in_batches(data_set, oplist, session, input_placeholder, labels_placeholder, num_per_batch=1000,
                    feed_dict=None):
-    """ Function that evaluates an operation in the graph in batches. """
+    ''' Function that evaluates an operation in the graph in batches. '''
     num_samples = float(data_set['labels'].shape[0])
     num_batches = int(np.ceil(num_samples/num_per_batch))
     # Store the results in a list

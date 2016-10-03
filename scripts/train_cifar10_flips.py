@@ -22,20 +22,24 @@ class MyIterator(Iterator):
         super(MyIterator, self).__init__(X.shape[0], batch_size, shuffle, seed)
 
     def next(self):
+        # Get indices
         with self.lock:
             index_array, current_index, current_batch_size = next(self.index_generator)
+        # Get batch
         batch_x = self.X[index_array].copy()
         batch_y = self.y[index_array]
-
+        # Flip images randomly
         flips = np.nonzero(np.random.choice(2, current_batch_size))
         batch_x[flips] =  batch_x[flips][:,:, ::-1, :]
 
+        # Apply preprocessing to images
         if self.mean is None or self.whitening is None:
             raise Exception('You must call fit before iterating.')
         batch_x = self.whiten(batch_x)
         return (batch_x, batch_y)
 
     def fit(self, X):
+        # Compute mean and whitening matrix from dataset statistics
         data_shape = X.shape
         size = data_shape[0]
         X = X.copy()
@@ -48,6 +52,7 @@ class MyIterator(Iterator):
         self.whitening = np.dot(np.dot(U, np.diag(1./np.sqrt(S + 1e-6))), U.T)
 
     def whiten(self, X):
+        # Apply whitening
         data_shape = X.shape
         size = data_shape[0]
         if len(data_shape) > 2:
@@ -56,7 +61,8 @@ class MyIterator(Iterator):
         white = np.dot(white, self.whitening)
         return np.reshape(white, data_shape)
 
-file_name = 'weights/cifar10/vgg_flip'
+# Choose where you want to save the model and meta checkpoints
+file_name = 'weights/cifar10/vgg_flip2'
 
 # Choose a model here
 # model = nin_bn_model()
@@ -66,17 +72,20 @@ sgd = SGD(lr=1e-1, momentum=.9, nesterov=True)
 model.compile(optimizer=sgd, loss='categorical_crossentropy',
               metrics=['accuracy'])
 
+# Step schedule. Half the learning rate each 25 epochs.
 steps = [25*i for i in range(1, 10)]
 rates = [0.1/2**i for i in range(10)]
 
-schedule = Step(steps, rates, verbose=1, schedule=schedule)
+schedule = Step(steps, rates, verbose=1)
 model_cbk = ModelCheckpoint(file_name + '.h5')
-meta_cbk = MetaCheckpoint(file_name + '.meta')
+meta_cbk = MetaCheckpoint(file_name + '.meta', schedule=schedule)
 
 train_set, _, test_set = cifar10.load('data/cifar10', gcn=True, zca=False)
 
 datagen = MyIterator(train_set['data'], train_set['labels'], shuffle=True)
+# Compute the mean and the whitening matrix
 datagen.fit(train_set['data'])
+# Apply whitening to the test set
 test_set['data'] = datagen.whiten(test_set['data'])
 
 model.fit_generator(datagen,
