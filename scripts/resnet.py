@@ -143,8 +143,8 @@ if __name__ == '__main__':
     augmented = True
 
     # Number of blocks per stack
-    nb_blocks = 9
-    bottleneck = True
+    nb_blocks = 3
+    bottleneck = False
     if bottleneck:
         depth = nb_blocks*9 + 2
     else:

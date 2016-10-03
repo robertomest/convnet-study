@@ -129,6 +129,17 @@ def zca_whitening(data_set, mean=None, whitening=None):
     white_data = np.dot(white_data, whitening)
     return white_data.reshape(data_shape), mean, whitening
 
+def per_channel_normalization(data_set):
+        if len(data_set.shape) < 4:
+            raise Exception('Expected 4 dim tensor, found shape: %s'
+                            %str(data_set.shape))
+        mean = np.mean(axis=(0, 1, 2))
+        std = np.std(axis=(0, 1, 2))
+
+        data_set -= mean
+        data_set /= std
+        return data_set
+
 def ops_in_batches(data_set, oplist, session, input_placeholder, labels_placeholder, num_per_batch=1000,
                    feed_dict=None):
     """ Function that evaluates an operation in the graph in batches. """

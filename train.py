@@ -17,7 +17,7 @@ from rme.callbacks import MetaCheckpoint
 
 parser = argparse.ArgumentParser(description='Train a model on CIFAR-10.')
 parser.add_argument('-m', '--model', help='Model loader name.', type=str,
-                    default=None)
+                    nargs='+', default=None)
 parser.add_argument('-b', '--batch_size', help='Mini-batch size.', type=int,
                     default=None)
 parser.add_argument('--l2', help='l2 regularization weight.', type=float,
@@ -105,12 +105,13 @@ else:
                         %(args['dataset'], ', '.join(datasets_list)))
     ## Instantiate a new model
     # Verify that the passed model exists
+    model_name = args['model'][0]
     try:
-        loader = getattr(loaders_module, args['model'])
+        loader = getattr(loaders_module, model_name)
     except AttributeError:
         loader_list = clean_dir_list(dir(loaders_module))
         raise Exception('Loader %s not found. Available loaders are: %s.'
-                        %(args['model'], ', '.join(loader_list)))
+                        %(model_name, ', '.join(loader_list)))
 
     # Get default args from the ModelLoader
     model_loader = loader(args)
