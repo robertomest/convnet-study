@@ -108,11 +108,8 @@ def zca_whitening(data_set, mean=None, whitening=None):
         # Simply return if data_set is empty
         return data_set, mean, whitening
     data_shape = data_set.shape
-    if len(data_shape) > 2:
-        size = data_shape[0]
-        white_data = data_set.reshape((size, -1))
-    else:
-        white_data = data_set
+    size = data_shape[0]
+    white_data = data_set.reshape((size, -1))
 
     if mean is None:
         # No mean matrix, we must compute it
