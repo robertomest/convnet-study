@@ -11,6 +11,8 @@ from blocks import (add_nin_block, add_nin_bn_block, #NiN
                     preact_layer, dense_block, transition_block, #Densenet
                     block_stack) #Resnet
 
+import tensorflow as tf
+
 ### CHECK IF SENCOND POOLING SHOULD BE MAX OR AVG!!!!!
 ### WHEN USING BN, AVG IS BETTER
 def nin_model(l2_reg=1e-4):
@@ -126,32 +128,33 @@ def densenet_model(nb_blocks, nb_layers, growth_rate, dropout=0., l2_reg=1e-4,
         Networks`: https://arxiv.org/abs/1608.06993
 
     '''
-    n_channels = init_channels
-    inputs = Input(shape=(32, 32, 3))
-    x = Convolution2D(init_channels, 3, 3, border_mode='same',
-                      init='he_normal', W_regularizer=l2(l2_reg),
-                      bias=False)(inputs)
-    for i in range(nb_blocks - 1):
-        # Create a dense block
-        x = dense_block(x, nb_layers, growth_rate,
-                        dropout=dropout, l2_reg=l2_reg)
-        # Update the number of channels
-        n_channels += nb_layers*growth_rate
-        # Transition layer
-        x = transition_block(x, n_channels, dropout=dropout, l2_reg=l2_reg)
+    with tf.variable_scope('densenet'):
+        n_channels = init_channels
+        inputs = Input(shape=(32, 32, 3))
+        x = Convolution2D(init_channels, 3, 3, border_mode='same',
+                          init='he_normal', W_regularizer=l2(l2_reg),
+                          bias=False)(inputs)
+        for i in range(nb_blocks - 1):
+            # Create a dense block
+            x = dense_block(x, nb_layers, growth_rate,
+                            dropout=dropout, l2_reg=l2_reg)
+            # Update the number of channels
+            n_channels += nb_layers*growth_rate
+            # Transition layer
+            x = transition_block(x, n_channels, dropout=dropout, l2_reg=l2_reg)
 
-    # Add last dense_block
-    x = dense_block(x, nb_layers, growth_rate, dropout=dropout, l2_reg=l2_reg)
-    # Add final BN-Relu
-    x = BatchNormalization(gamma_regularizer=l2(l2_reg),
-                             beta_regularizer=l2(l2_reg))(x)
-    x = Activation('relu')(x)
-    # Global average pooling
-    x = GlobalAveragePooling2D()(x)
-    x = Dense(10, W_regularizer=l2(l2_reg))(x)
-    x = Activation('softmax')(x)
+        # Add last dense_block
+        x = dense_block(x, nb_layers, growth_rate, dropout=dropout, l2_reg=l2_reg)
+        # Add final BN-Relu
+        x = BatchNormalization(gamma_regularizer=l2(l2_reg),
+                                 beta_regularizer=l2(l2_reg))(x)
+        x = Activation('relu')(x)
+        # Global average pooling
+        x = GlobalAveragePooling2D()(x)
+        x = Dense(10, W_regularizer=l2(l2_reg))(x)
+        x = Activation('softmax')(x)
 
-    model = Model(input=inputs, output=x)
+        model = Model(input=inputs, output=x)
     return model
 
 def resnet_model(nb_blocks, bottleneck=True, l2_reg=1e-4):

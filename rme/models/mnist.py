@@ -8,17 +8,17 @@ from blocks import add_nin_bn_block
 def simple_model():
     model = Sequential()
     model.add(Convolution2D(32, 5, 5, border_mode='same',
-                          input_shape=(28, 28, 1)))
+                          input_shape=(28, 28, 1), name='Conv1'))
     model.add(Activation('relu'))
     model.add(MaxPooling2D())
-    model.add(Convolution2D(64, 5, 5, border_mode='same'))
+    model.add(Convolution2D(64, 5, 5, border_mode='same', name='Conv2'))
     model.add(Activation('relu'))
     model.add(MaxPooling2D())
     model.add(Flatten())
-    model.add(Dense(1024))
+    model.add(Dense(1024, name='Dense1'))
     model.add(Activation('relu'))
     model.add(Dropout(0.5))
-    model.add(Dense(10))
+    model.add(Dense(10, name='Dense2'))
     model.add(Activation('softmax'))
     return model
 
