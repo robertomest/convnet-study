@@ -1,9 +1,12 @@
+import tensorflow as tf
 import keras.backend as K
 from keras.layers import Activation, merge, Dropout
 from keras.regularizers import l2
 from keras.layers.convolutional import Convolution2D
 from keras.layers.normalization import BatchNormalization
 from keras.layers.pooling import AveragePooling2D
+
+from ..utils import name_with_uid
 
 def add_conv(model, n_filters, kernel_size=3, init='normal',
              stride=1, l2_reg=1e-3, border_mode='same',
@@ -67,48 +70,67 @@ def add_vgg_block(model, n_filters, init='he_uniform', l2_reg=5e-4,
 ### Blocks that use the functional API
 
 ### Blocks used for Densenet
-def preact_layer(x, nb_channels, kernel_size=3, dropout=0., l2_reg=1e-4):
+def preact_layer(x, nb_channels, kernel_size=3, dropout=0., l2_reg=1e-4,
+                 layer_id=None):
     '''
     Adds a preactivation layer for the densenet. This also includes l2
     reagularization on BatchNorm learnable parameters as in the original
     implementation.
     '''
-    out = BatchNormalization(gamma_regularizer=l2(l2_reg),
-                             beta_regularizer=l2(l2_reg))(x)
-    out = Activation('relu')(out)
-    out = Convolution2D(nb_channels, kernel_size, kernel_size,
-                        border_mode='same', init='he_normal',
-                        W_regularizer=l2(l2_reg), bias=False)(out)
-    if dropout > 0:
-        out = Dropout(dropout)(out)
+    name = 'preact_layer'
+    if layer_id:
+        name += '_%d' %layer_id
+    with tf.variable_scope(name):
+        out = BatchNormalization(gamma_regularizer=l2(l2_reg),
+                                beta_regularizer=l2(l2_reg),
+                                name=name_with_uid('batchnorm'))(x)
+
+        out = Activation('relu', name=name_with_uid('relu'))(out)
+        out = Convolution2D(nb_channels, kernel_size, kernel_size,
+                            border_mode='same', init='he_normal',
+                            W_regularizer=l2(l2_reg), bias=False,
+                            name=name_with_uid('conv'))(out)
+        if dropout > 0:
+            out = Dropout(dropout, name=name_with_uid('dropout'))(out)
     return out
 
-def dense_block(x, nb_layers, growth_rate, dropout=0., l2_reg=1e-4):
+def dense_block(x, nb_layers, growth_rate, dropout=0., l2_reg=1e-4,
+                layer_id=None):
     '''
     Adds a dense block for the densenet.
     '''
-    for i in range(nb_layers):
-        # Get layer output
-        out = preact_layer(x, growth_rate, dropout=dropout, l2_reg=l2_reg)
-        if K.image_dim_ordering() == 'tf':
-            merge_axis = -1
-        elif K.image_dim_ordering() == 'th':
-            merge_axis = 1
-        else:
-            raise Exception('Invalid dim_ordering: ' + K.image_dim_ordering())
-        # Concatenate input with layer ouput
-        x = merge([x, out], mode='concat', concat_axis=merge_axis)
+    name = 'dense_block'
+    if layer_id:
+        name += '_%d' %layer_id
+    with tf.variable_scope(name):
+        for i in range(nb_layers):
+            # Get layer output
+            out = preact_layer(x, growth_rate, dropout=dropout, l2_reg=l2_reg,
+                               layer_id=i)
+            if K.image_dim_ordering() == 'tf':
+                merge_axis = -1
+            elif K.image_dim_ordering() == 'th':
+                merge_axis = 1
+            else:
+                raise Exception('Invalid dim_ordering: ' + K.image_dim_ordering())
+            # Concatenate input with layer ouput
+            x = merge([x, out], mode='concat', concat_axis=merge_axis,
+                      name=name_with_uid('merge'))
     return x
 
-def transition_block(x, nb_channels, dropout=0., l2_reg=1e-4):
+def transition_block(x, nb_channels, dropout=0., l2_reg=1e-4, layer_id=None):
     '''
     Adds a transition block for the densenet.
     '''
-    x = preact_layer(x, nb_channels, kernel_size=1, dropout=dropout,
-                     l2_reg=l2_reg)
+    name = 'transition_block'
+    if layer_id:
+        name += '_%d' %layer_id
+    with tf.variable_scope(name):
+        x = preact_layer(x, nb_channels, kernel_size=1, dropout=dropout,
+                        l2_reg=l2_reg)
     # x = Convolution2D(n_channels, 1, 1, border_mode='same',
     #                   init='he_normal', W_regularizer=l2(l2_reg))(x)
-    x = AveragePooling2D()(x)
+        x = AveragePooling2D(name=name_with_uid('avg_pool'))(x)
     return x
 
 ### Blocks used for Resnet

@@ -119,7 +119,7 @@ def vgg_model(l2_reg=5e-4):
     return model
 
 def densenet_model(nb_blocks, nb_layers, growth_rate, dropout=0., l2_reg=1e-4,
-                   init_channels=16):
+                   init_channels=16, input_layer=None):
     '''
     Implementation of Densenet[1] model which concatenate all previous layers'
     outputs as the current layer's input.
@@ -130,32 +130,40 @@ def densenet_model(nb_blocks, nb_layers, growth_rate, dropout=0., l2_reg=1e-4,
     '''
     with tf.variable_scope('densenet'):
         n_channels = init_channels
-        inputs = Input(shape=(32, 32, 3))
+        if input_layer is None:
+            inputs = Input(shape=(32, 32, 3))
+        else:
+            inputs = input_layer
         x = Convolution2D(init_channels, 3, 3, border_mode='same',
                           init='he_normal', W_regularizer=l2(l2_reg),
-                          bias=False)(inputs)
+                          bias=False, name='first_conv')(inputs)
+        i = -1
         for i in range(nb_blocks - 1):
             # Create a dense block
             x = dense_block(x, nb_layers, growth_rate,
-                            dropout=dropout, l2_reg=l2_reg)
+                            dropout=dropout, l2_reg=l2_reg, layer_id=i)
             # Update the number of channels
             n_channels += nb_layers*growth_rate
             # Transition layer
-            x = transition_block(x, n_channels, dropout=dropout, l2_reg=l2_reg)
-
+            x = transition_block(x, n_channels, dropout=dropout, l2_reg=l2_reg,
+                                 layer_id=i)
+        i+= 1
         # Add last dense_block
-        x = dense_block(x, nb_layers, growth_rate, dropout=dropout, l2_reg=l2_reg)
+        x = dense_block(x, nb_layers, growth_rate,
+                        dropout=dropout, l2_reg=l2_reg, layer_id=i)
         # Add final BN-Relu
         x = BatchNormalization(gamma_regularizer=l2(l2_reg),
-                                 beta_regularizer=l2(l2_reg))(x)
-        x = Activation('relu')(x)
+                               beta_regularizer=l2(l2_reg),
+                               name='final_bn')(x)
+        x = Activation('relu', name='final_relu')(x)
         # Global average pooling
-        x = GlobalAveragePooling2D()(x)
-        x = Dense(10, W_regularizer=l2(l2_reg))(x)
-        x = Activation('softmax')(x)
-
-        model = Model(input=inputs, output=x)
-    return model
+        x = GlobalAveragePooling2D(name='global_pool')(x)
+        x = Dense(10, W_regularizer=l2(l2_reg), name='output_dense')(x)
+        x = Activation('softmax', name='softmax')(x)
+        if input_layer is None:
+            model = Model(input=inputs, output=x)
+            return model
+    return x
 
 def resnet_model(nb_blocks, bottleneck=True, l2_reg=1e-4):
     '''

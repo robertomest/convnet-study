@@ -4,12 +4,21 @@ import keras.backend as K
 from keras.models import Sequential, Model
 from keras import optimizers, objectives
 from keras.engine.training import collect_trainable_weights, slice_X
+from keras.layers import merge
 
 from tensorflow.python.client import device_lib
 
 def number_of_gpus():
     l = device_lib.list_local_devices()
     return len([x.name for x in l if x.device_type=="GPU"])
+
+def get_layers(layers, t_layers):
+    new_layers = [l for l in layers if l not in t_layers]
+    t_layers += new_layers
+    for l in new_layers:
+        for n in l.inbound_nodes:
+            t_layers = get_layers(n.inbound_layers, t_layers)
+    return t_layers
 
 
 class MultiGPUModel(object):
@@ -24,13 +33,25 @@ class MultiGPUModel(object):
         self.scope = 'shared' + str(K.get_uid(prefix='shared'))
         self.model_fn = model_fn
         self.n_gpus = n_gpus
+        self.inputs = []
+        self.outputs = []
         # Create cpu model that will update the weights
         self.cpu_model = self.shared_model()
         # Create gpu models that will do computation
-        self.gpu_models = []
         for i in range(self.n_gpus):
+            K.reset_uids()
             dev = '/gpu:' + str(i)
-            self.gpu_models.append(self.shared_model(reuse=True, device=dev))
+            model = self.shared_model(reuse=True, device=dev)
+            self.inputs += model.inputs
+            self.outputs.append(model.outputs)
+
+        outputs = [[out[i] for out in self.outputs] for i in range(len(self.outputs[0]))]
+        merged = []
+        with tf.device('/cpu:0'):
+            for outs in outputs:
+                merged.append(merge(outs, mode='concat', concat_axis=0))
+        self.outputs = merged
+        self.model = Model(input=self.inputs, output=self.outputs)
 
     def shared_model(self, reuse=False, device='/cpu:0'):
         with tf.device(device):
@@ -38,42 +59,15 @@ class MultiGPUModel(object):
                 model = self.model_fn()
                 if isinstance(model, Sequential):
                     model = Model(input=model.input, output=model.output)
-                    model.device=device
+                for l in model.layers:
+                    l.name += device
+                model.device=device
         return model
 
-    def compile(self, optimizer='sgd', loss='categorical_crossentropy'):
-        self.optimizer = optimizers.get(optimizer)
-        self.loss = objectives.get(loss)
-        self.losses = []
-        self.targets = []
-        self.inputs = []
-        self.outputs = []
-        self.sample_weights = []
-        self.trainable_weights = collect_trainable_weights(self.cpu_model)
-        # Compile all the models
-        for m in self.gpu_models:
-            with tf.device(m.device):
-                m.compile(optimizer=None, loss=loss)
-                self.losses.append(m.total_loss)
-                self.targets += m.targets
-                if type(m.input) is list:
-                    self.inputs += m.input
-                else:
-                    self.inputs.append(m.input)
-                if type(m.output) is list:
-                    self.outputs += m.output
-                else:
-                    self.outputs.append(m.output)
-                self.sample_weights += m.sample_weights
-
-    def get_inputs(self, x, y):
-        x, y, w = self.gpu_models[0]._standardize_user_data(x, y)
-        std_list = x + y + w
-        nb_train_sample = std_list[0].shape[0]
+    def split_inputs(self, x):
+        nb_train_sample = x.shape[0]
         nb_per_gpu = nb_train_sample/self.n_gpus
-        slices = []
+        inputs = []
         for i in range(self.n_gpus):
-            slices.append(slice_X(std_list, start=nb_per_gpu*i,
-                                  stop=nb_per_gpu*(i + 1)))
-        inputs = [sl[i] for i in range(len(slices[0])) for sl in slices]
+            inputs.append(x[nb_per_gpu*i:nb_per_gpu*(i + 1)])
         return inputs

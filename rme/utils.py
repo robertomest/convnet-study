@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import keras.backend as K
 
 def plot_metrics(meta, title):
     f, axarr = plt.subplots(2, sharex=True)
@@ -10,3 +11,6 @@ def plot_metrics(meta, title):
         axarr[i].legend(legend, loc=loc[i])
     axarr[0].set_title(title)
     plt.show()
+
+def name_with_uid(name):
+    return name + '%d' %K.get_uid(name)
