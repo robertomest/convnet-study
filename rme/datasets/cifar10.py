@@ -5,10 +5,9 @@ import glob
 import pickle
 import numpy as np
 
-from .utils import global_contrast_normalization, zca_whitening, one_hotify
+from .preprocessing import one_hotify
 
-def load(data_dir, valid_ratio=0.0, one_hot=True, shuffle=False, gcn=True,
-         zca=True, dtype='float32'):
+def load(data_dir, valid_ratio=0.0, one_hot=True, shuffle=False, dtype='float32'):
   """
   Loads CIFAR-10 pickled batch files, given the files' directory.
   Optionally shuffles samples before dividing training and validation sets.
@@ -99,19 +98,14 @@ def load(data_dir, valid_ratio=0.0, one_hot=True, shuffle=False, gcn=True,
     else:
       test_set['labels'] = np.array(batch_dict['labels'])
 
-  # Do some postprocessing
-  if gcn:
-    # Do global contrast normalization
-    train_set['data'] = global_contrast_normalization(train_set['data'])
-    valid_set['data'] = global_contrast_normalization(valid_set['data'])
-    test_set['data'] = global_contrast_normalization(test_set['data'])
-
-  if zca:
-    train_set['data'], mean, whitening = zca_whitening(train_set['data'])
-    valid_set['data'], _, _ = zca_whitening(valid_set['data'], mean=mean,
-                                            whitening=whitening)
-    test_set['data'], _, _ = zca_whitening(test_set['data'], mean=mean,
-                                           whitening=whitening)
-    return train_set, valid_set, test_set, mean, whitening
-
   return train_set, valid_set, test_set
+
+
+def preprocess(dataset):
+    mean = np.array([125.3, 123.0, 113.9])
+    std = np.array([63.0, 62.1, 66.7])
+
+    dataset -= mean
+    dataset /= std
+
+    return dataset

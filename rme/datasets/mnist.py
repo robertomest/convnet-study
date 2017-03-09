@@ -5,10 +5,9 @@ import numpy as np
 import gzip
 import struct
 
-from .utils import one_hotify, normalization
+from .preprocessing import one_hotify
 
-def load(data_dir, valid_ratio=0.0, one_hot=True, shuffle=False,
-         normalize=True, dtype='float32'):
+def load(data_dir, valid_ratio=0.0, one_hot=True, shuffle=False, dtype='float32'):
 
   train_set, valid_set, test_set = {}, {}, {}
   # Get data from binary files
@@ -46,12 +45,13 @@ def load(data_dir, valid_ratio=0.0, one_hot=True, shuffle=False,
   train_set['data'] = train_set['data'][:M]
   train_set['labels'] = train_set['labels'][:M]
 
-  if normalize:
-    # Normalize data
-    train_set['data'], mean, std = normalization(train_set['data'])
-    valid_set['data'], _, _ = normalization(valid_set['data'], mean, std)
-    test_set['data'], _, _ = normalization(test_set['data'], mean, std)
-
-    return train_set, valid_set, test_set, mean, std
-
   return train_set, valid_set, test_set
+
+def preprocess(dataset):
+    mean = 33.3
+    std = 78.6
+
+    dataset -= mean
+    dataset /= std
+
+    return dataset

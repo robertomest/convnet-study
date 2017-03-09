@@ -1,6 +1,8 @@
 import keras.backend as K
-from keras.callbacks import Callback
+from keras.callbacks import Callback, ModelCheckpoint
 import yaml
+import h5py
+import numpy as np
 
 class Step(Callback):
 
@@ -56,27 +58,36 @@ class TriangularCLR(Callback):
         K.set_value(self.model.optimizer.lr, new_lr)
 
 
-class MetaCheckpoint(Callback):
-    '''
-    Checkpoints some training information on a meta file. Together with the
-    Keras model saving, this should enable resuming training and having training
-    information on every checkpoint.
-    '''
+class MetaCheckpoint(ModelCheckpoint):
+    """
+    Checkpoints some training information with the model. This should enable
+    resuming training and having training information on every checkpoint.
+    Thanks to Roberto Estevao @robertomest - robertomest@poli.ufrj.br
+    """
 
-    def __init__(self, filepath, schedule=None, training_args=None):
+    def __init__(self, filepath, monitor='val_loss', verbose=0,
+                 save_best_only=False, save_weights_only=False,
+                 mode='auto', period=1, training_args=None, meta=None):
+
+        super(MetaCheckpoint, self).__init__(filepath, monitor='val_loss',
+                                             verbose=0, save_best_only=False,
+                                             save_weights_only=False,
+                                             mode='auto', period=1)
+
         self.filepath = filepath
-        self.meta = {'epoch': []}
-        if schedule:
-            self.meta['schedule'] = schedule.get_config()
+        self.meta = meta or {'epochs': []}
+
         if training_args:
             self.meta['training_args'] = training_args
 
     def on_train_begin(self, logs={}):
-        self.epoch_offset = len(self.meta['epoch'])
+        super(MetaCheckpoint, self).on_train_begin(logs)
 
     def on_epoch_end(self, epoch, logs={}):
+        super(MetaCheckpoint, self).on_epoch_end(epoch, logs)
+
         # Get statistics
-        self.meta['epoch'].append(epoch + self.epoch_offset)
+        self.meta['epochs'].append(epoch)
         for k, v in logs.items():
             # Get default gets the value or sets (and gets) the default value
             self.meta.setdefault(k, []).append(v)
@@ -84,5 +95,12 @@ class MetaCheckpoint(Callback):
         # Save to file
         filepath = self.filepath.format(epoch=epoch, **logs)
 
-        with open(filepath, 'wb') as f:
-            yaml.dump(self.meta, f)
+        if self.epochs_since_last_save == 0:
+            with h5py.File(filepath, 'r+') as f:
+                meta_group = f.create_group('meta')
+                meta_group.attrs['training_args'] = yaml.dump(
+                    self.meta.get('training_args', '{}'))
+                meta_group.create_dataset('epochs',
+                                          data=np.array(self.meta['epochs']))
+                for k in logs:
+                    meta_group.create_dataset(k, data=np.array(self.meta[k]))
