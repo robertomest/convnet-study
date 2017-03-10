@@ -77,6 +77,8 @@ if __name__ == '__main__':
         train_set, valid_set, test_set = datasets.cifar10.load('data/cifar10')
     elif args.dataset == 'cifar100':
         train_set, valid_set, test_set = datasets.cifar100.load('data/cifar100')
+    elif args.dataset == 'svhn':
+        train_set, valid_set, test_set = datasets.svhn.load('data/svhn')
     else:
         raise NotImplementedError('Dataset %s is not available.' %training_args['dataset'])
 
@@ -101,6 +103,12 @@ if __name__ == '__main__':
         print('No validation set, using test set as validation data.')
         validation_data = (test_set['data'], test_set['labels'])
     else:
+        chkpt_path, chkpt_name = os.path.split(training_args['save_checkpoint'])
+        best_model_name = os.path.join(chkpt_path, 'best_' + chkpt_name)
+        print('Saving model with best validation accuracy with name %s.'
+              %best_model_name)
+        chkpt_cbk = MetaCheckpoint(best_model_name, save_best_only=True,
+                                   training_args=training_args)
         validation_data = (valid_set['data'], valid_set['labels'])
 
     callbacks = [chkpt_cbk]
@@ -119,7 +127,7 @@ if __name__ == '__main__':
         schedule = schedule_fun(training_args['dataset'], training_args['lr'])
         callbacks.append(schedule)
     else:
-
+        # Use fixed learning rate
         print('No learning rate scheduling. Learning rate will be constant')
 
 
@@ -130,3 +138,6 @@ if __name__ == '__main__':
                         nb_epoch=training_args['epochs'],
                         validation_data=validation_data,
                         callbacks=callbacks, initial_epoch=initial_epoch)
+
+    test_loss, test_acc = model.evaluate(test_set['data'], test_set['labels'])
+    print('Test set loss = %g. Test set accuracy = %g' %(test_loss, test_acc))
