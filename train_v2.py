@@ -17,8 +17,6 @@ from rme import preprocessing
 
 if __name__ == '__main__':
 
-    available_archs = {'nin': rme.models.nin, 'baseline': rme.models.baseline}
-
     parser = argparse.ArgumentParser(description='Train a model on the desired dataset.')
     parser.add_argument('--architecture', type=str)
     parser.add_argument('--dataset', type=str)
@@ -48,7 +46,7 @@ if __name__ == '__main__':
         model = load_model(args.load_checkpoint)
         meta = load_meta(args.load_checkpoint)
         args.dataset = meta['training_args']['dataset']
-        arch = available_archs[meta['training_args']['architecture']]
+        arch = getattr(rme.models, meta['training_args']['architecture'])
         training_args = meta['training_args']
         chkpt_cbk = MetaCheckpoint(args.save_checkpoint, meta=meta)
         initial_epoch = meta['epochs'][-1] + 1
