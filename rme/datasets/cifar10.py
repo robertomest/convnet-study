@@ -64,7 +64,7 @@ def load(data_dir, valid_ratio=0.0, one_hot=True, shuffle=False, dtype='float32'
       labels = batch_labels
     else:
       # Stack labels together
-      labels = np.vstack((labels, batch_labels))
+      labels = np.concatenate((labels, batch_labels), axis=0)
 
   N = data_set.shape[0]
   if shuffle:

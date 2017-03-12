@@ -6,7 +6,7 @@ import numpy as np
 
 from .preprocessing import one_hotify
 
-def load(data_dir, shuffle=False):
+def load(data_dir, shuffle=False, one_hot=True, dtype='float32'):
 
     train_set, valid_set, test_set = {}, {}, {}
 
@@ -65,8 +65,10 @@ def load(data_dir, shuffle=False):
 
     for dataset in [train_set, valid_set, test_set]:
         perm = np.random.permutation(np.arange(dataset['data'].shape[0]))
-        dataset['data'] = (dataset['data'][perm]).astype('float32')
-        dataset['labels'] = one_hotify(dataset['labels'][perm], nb_classes=10)
+        dataset['data'] = (dataset['data'][perm]).astype(dtype)
+        dataset['labels'] = dataset['labels'][perm]
+        if one_hot:
+            dataset['labels'] = one_hotify(dataset['labels'], nb_classes=10)
 
     return train_set, valid_set, test_set
 
