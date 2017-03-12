@@ -6,7 +6,7 @@ import numpy as np
 
 from .preprocessing import one_hotify
 
-def load(data_dir, shuffle=True):
+def load(data_dir, shuffle=False):
 
     train_set, valid_set, test_set = {}, {}, {}
 

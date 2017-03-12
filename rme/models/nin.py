@@ -96,8 +96,8 @@ def default_args(dataset):
         training_args['batch_size'] = 64
     elif dataset == 'svhn':
         training_args['lr'] = 0.1
-        training_args['epochs'] = 80
-        training_args['batch_size'] = 128
+        training_args['epochs'] = 40
+        training_args['batch_size'] = 64
     else:
         print('Default args not defined for dataset: %s' %dataset)
     return training_args
@@ -110,7 +110,7 @@ def schedule(dataset, lr):
         steps = [25*i for i in range(1, 10)]
         lrs = [lr/ 2**i for i in range(10)]
     elif dataset == 'svhn':
-        steps = [40, 60]
+        steps = [20, 30]
         lrs = [lr, lr/10, lr/100]
     else:
         raise ValueError('Schedule not defined for dataset: %s' %dataset)

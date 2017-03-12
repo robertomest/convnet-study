@@ -6,6 +6,7 @@ import tensorflow as tf
 import keras
 from keras.models import load_model
 from keras.optimizers import SGD
+from keras.preprocessing.image import ImageDataGenerator
 
 import rme.models
 from rme.utils import config_gpu, load_meta, parse_training_args, parse_kwparams
@@ -31,6 +32,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=None)
     parser.add_argument('--schedule', type=str, default=None)
     parser.add_argument('--preprocessing', type=str, default=None)
+    parser.add_argument('--augmented', default=False, action='store_true')
     # GPU args
     parser.add_argument('--gpu', type=str, default='')
     parser.add_argument('--allow_growth', default=False, action='store_true')
@@ -52,7 +54,8 @@ if __name__ == '__main__':
         initial_epoch = meta['epochs'][-1] + 1
     else:
         try:
-            arch = available_archs[args.architecture]
+            arch = getattr(rme.models, args.architecture)
+            # arch = available_archs[args.architecture]
         except KeyError as e:
             raise ValueError('Architecture %s is not available.' %args.architecture)
 
@@ -99,6 +102,8 @@ if __name__ == '__main__':
                                         valid_set['data'],
                                         test_set['data'], args.dataset)
 
+    callbacks = [chkpt_cbk]
+
     if valid_set is None or valid_set['data'].size == 0:
         print('No validation set, using test set as validation data.')
         validation_data = (test_set['data'], test_set['labels'])
@@ -107,11 +112,11 @@ if __name__ == '__main__':
         best_model_name = os.path.join(chkpt_path, 'best_' + chkpt_name)
         print('Saving model with best validation accuracy with name %s.'
               %best_model_name)
-        chkpt_cbk = MetaCheckpoint(best_model_name, save_best_only=True,
+        best_cbk = MetaCheckpoint(best_model_name, save_best_only=True,
                                    training_args=training_args)
         validation_data = (valid_set['data'], valid_set['labels'])
-
-    callbacks = [chkpt_cbk]
+        # Append it to callbacks list
+        callbacks.append(best_cbk)
 
     if training_args['schedule'] != 'none':
         # Set learning rate schedule
@@ -133,11 +138,31 @@ if __name__ == '__main__':
 
     print('Training with:')
     print('%s' %str(training_args))
-    history = model.fit(train_set['data'], train_set['labels'],
-                        batch_size=training_args['batch_size'],
-                        nb_epoch=training_args['epochs'],
-                        validation_data=validation_data,
-                        callbacks=callbacks, initial_epoch=initial_epoch)
 
-    test_loss, test_acc = model.evaluate(test_set['data'], test_set['labels'])
+    if training_args['augmented']:
+        print('Training with data augmentation: crops and flips.')
+        data_gen = ImageDataGenerator(horizontal_flip=True,
+                                      width_shift_range=0.125,
+                                      height_shift_range=0.125,
+                                      fill_mode='constant')
+        data_iter = data_gen.flow(train_set['data'], train_set['labels'],
+                                  batch_size=training_args['batch_size'],
+                                  shuffle=True)
+
+        model.fit_generator(data_iter,
+                            samples_per_epoch=train_set['data'].shape[0],
+                            nb_epoch=training_args['epochs'],
+                            validation_data=(test_set['data'],
+                                             test_set['labels']),
+                            callbacks=callbacks, initial_epoch=initial_epoch)
+    else:
+        model.fit(train_set['data'], train_set['labels'],
+                  batch_size=training_args['batch_size'],
+                  nb_epoch=training_args['epochs'],
+                  validation_data=validation_data,
+                  callbacks=callbacks, initial_epoch=initial_epoch,
+                  shuffle=True)
+
+    test_loss, test_acc = model.evaluate(test_set['data'], test_set['labels'],
+                                         verbose=2)
     print('Test set loss = %g. Test set accuracy = %g' %(test_loss, test_acc))
