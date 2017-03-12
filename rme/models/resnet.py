@@ -93,15 +93,20 @@ def downsample_block(x, num_channels, kernel_size, l2_reg, bottleneck,
     '''
     Resnet residual block that downsamples the feature maps.
     '''
+    # Perform pre-activation for both the residual and the projection
+    x = BatchNormalization(name=name+'_shared_bn')(x)
+    x = Activation('relu', name=name+'_shared_relu')(x)
+
     if bottleneck:
         out = bottleneck_layer(x, num_channels, kernel_size, l2_reg,
-                               stride=2, name=name)
+                               stride=2, first=True, name=name)
         # The output channels is 4x bigger on this case
         num_channels = num_channels * 4
     else:
         out = two_conv_layer(x, num_channels, kernel_size, l2_reg,
-                             stride=2, name=name)
+                             stride=2, first=True, name=name)
     # Projection on the shortcut
+    # Pre-activated conv
     proj = Convolution2D(num_channels, 1, 1, subsample=(2, 2),
                          border_mode='valid', init='he_normal',
                          W_regularizer=l2(l2_reg), bias=False,
@@ -147,7 +152,7 @@ def model(dataset, num_blocks=18, width=1, bottleneck=True, l2_reg=1e-4):
     else:
         raise ValueError('Model is not defined for dataset: %s' %dataset)
 
-    o = Convolution2D(16*width, 3, 3, border_mode='same', init='he_normal',
+    o = Convolution2D(16, 3, 3, border_mode='same', init='he_normal',
                       W_regularizer=l2(l2_reg), bias=False)(x)
     o = BatchNormalization()(o)
     o = Activation('relu')(o)
