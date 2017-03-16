@@ -32,7 +32,11 @@ if __name__ == '__main__':
 
     sns.set_style('whitegrid')
     sns.set_context('paper', font_scale=1.5)
-    palette = sns.color_palette()
+    num_curves = len(args.checkpoints)
+    if  num_curves <= 6:
+        palette = sns.color_palette()
+    else:
+        palette = sns.hls_palette(len(args.checkpoints), l=.4)
 
     for idx, (chkpt, pref) in enumerate(zip(args.checkpoints, args.arch_names)):
         meta = load_meta(chkpt)
@@ -44,7 +48,8 @@ if __name__ == '__main__':
             m = meta[args.metric]
             val_m = meta['val_%s' %args.metric]
         h, = plt.plot(epochs, m, '--', label='%s %s' %(pref, args.metric_names[0]), color=palette[idx])
-        handles.append(h)
+        if num_curves <= 6:
+            handles.append(h)
         h, = plt.plot(epochs, val_m, label='%s %s' %(pref, args.metric_names[1]), color=palette[idx])
         handles.append(h)
 
