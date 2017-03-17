@@ -152,7 +152,7 @@ def model(dataset, num_blocks=18, width=1, bottleneck=True, l2_reg=1e-4):
     else:
         raise ValueError('Model is not defined for dataset: %s' %dataset)
 
-    o = Convolution2D(16, 3, 3, border_mode='same', init='he_normal',
+    o = Convolution2D(16*width, 3, 3, border_mode='same', init='he_normal',
                       W_regularizer=l2(l2_reg), bias=False)(x)
     o = BatchNormalization()(o)
     o = Activation('relu')(o)

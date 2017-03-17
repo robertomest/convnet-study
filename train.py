@@ -1,173 +1,166 @@
 ### This requires KERAS 1.0.7
 import argparse
-import fnmatch
-import pickle
-import yaml
 import os
 
+import tensorflow as tf
 import keras
-from keras.callbacks import ModelCheckpoint
+from keras.models import load_model
 from keras.optimizers import SGD
+from keras.preprocessing.image import ImageDataGenerator
 
-from rme import models
-from rme import loaders
+import rme.models
+from rme.utils import config_gpu, load_meta, parse_training_args, parse_kwparams
 from rme import datasets
-import rme.callbacks
 from rme.callbacks import MetaCheckpoint
+from rme import schedules
+from rme import preprocessing
 
-parser = argparse.ArgumentParser(description='Train a model on CIFAR-10.')
-parser.add_argument('-m', '--model', help='Model loader name.', type=str,
-                    nargs='+', default=None)
-parser.add_argument('-b', '--batch_size', help='Mini-batch size.', type=int,
-                    default=None)
-parser.add_argument('--l2', help='l2 regularization weight.', type=float,
-                    default=None)
-parser.add_argument('-l', '--load', help='Load checkpoint from this file.',
-                    type=str, default=None)
-parser.add_argument('-s', '--save', help='Save checkpoint to this file.',
-                    type=str, default=None)
-parser.add_argument('--schedule',
-                    help='Learning rate schedule name as defined in\
-                    schedule.yaml.',
-                    type=str, default=None)
-parser.add_argument('--lr',
-                    help='Learning rate. Ignored if schedule is passed.',
-                    type=float, default=None)
-parser.add_argument('-e', '--epochs', help='How many epochs to train for.\
-                    This will resume from the checkpoint if one was provided.',
-                    type=int, default=None)
-parser.add_argument('-d', '--dataset', help='Choose the dataset by name.',
-                    type=str, default=None)
-parser.add_argument('-v', '--valid', help='Training set ratio to be used as\
-                                           validation.', type=float, default=0.)
-args = parser.parse_args()
-args = vars(args)
-callback_list = []
-schedule = None
-meta_cbk = None
-epoch_offset = 0
-default_save = 'checkpoint'
+if __name__ == '__main__':
 
-def clean_dir_list(dir_list):
-    blacklist = ['absolute_import', 'utils', 'base', 'ModelLoader']
-    new_list = fnmatch.filter(dir_list, '[!__]*')
-    new_list = fnmatch.filter(dir_list, '*[!_model]')
-    new_list = [it for it in new_list if it not in blacklist]
-    return new_list
+    parser = argparse.ArgumentParser(description='Train a model on the desired dataset.')
+    parser.add_argument('--architecture', type=str)
+    parser.add_argument('--dataset', type=str)
+    parser.add_argument('--save_checkpoint', type=str, default='checkpoint.h5')
+    parser.add_argument('--load_checkpoint', type=str, default=None)
+    # Hyperparameters
+    parser.add_argument('--kwparams', type=str, nargs='+', default=None)
+    # Training args
+    parser.add_argument('--lr', type=float, default=None)
+    parser.add_argument('--batch_size', type=float, default=None)
+    parser.add_argument('--epochs', type=int, default=None)
+    parser.add_argument('--schedule', type=str, default=None)
+    parser.add_argument('--preprocessing', type=str, default=None)
+    parser.add_argument('--augmented', default=False, action='store_true')
+    # GPU args
+    parser.add_argument('--gpu', type=str, default='')
+    parser.add_argument('--allow_growth', default=False, action='store_true')
 
-## TODO: For now if you load a model, it will continue to train it as it was
-######   when it was saved. We should be able to redefine most parameters if
-######   we wanted
-if args['load']:
-    # Load checkpointed data and continue training
-    file_name = args['load'] + '.h5'
-    meta_file_name = args['load'] + '.meta'
-    # Load model from file
-    model = keras.models.load_model(file_name)
-    # Recover metadata
-    with open(meta_file_name, 'rb') as f:
-        meta = yaml.load(f)
-    # meta contains information about arguments, schedule and training statistics
-    # Offset the number of epochs we already trained for.
-    epoch_offset = len(meta['epoch'])
-    # Restore args
-    args = meta['training_args']
+    args = parser.parse_args()
 
-    # Load schedule from config
-    schedule_config = meta.get('schedule')
-    if schedule_config:
-        schedule_config['epoch_offset'] = epoch_offset
-        schedule_class = getattr(rme.callbacks, schedule_config['class'])
-        schedule = schedule_class.from_config(schedule_config)
-        callback_list.append(schedule)
+    config_gpu(args.gpu, args.allow_growth)
 
-    # Instantiate ModelCheckpoint callback
-    model_cbk = ModelCheckpoint(file_name)
-    callback_list.append(model_cbk)
+    training_args = vars(args)
 
-    # Instantiate MetaCheckpoint callback and restore meta
-    meta_cbk = MetaCheckpoint(meta_file_name)
-    meta_cbk.meta = meta
-    callback_list.append(meta_cbk)
-
-else:
-    if args['model'] is None:
-        raise Exception('You must provide a model loader or a checkpoint.')
-    if args['dataset'] is None:
-        raise Exception('You must provide a dataset or a checkpoint.')
-
-    try:
-        loaders_module = getattr(loaders, args['dataset'])
-    except AttributeError:
-        datasets_list = clean_dir_list(dir(loaders))
-        raise Exception(('Dataset %s is not available. '
-                         'Available datasets are:\n%s.')
-                        %(args['dataset'], ', '.join(datasets_list)))
-    ## Instantiate a new model
-    # Verify that the passed model exists
-    model_name = args['model'][0]
-    try:
-        loader = getattr(loaders_module, model_name)
-    except AttributeError:
-        loader_list = clean_dir_list(dir(loaders_module))
-        raise Exception('Loader %s not found. Available loaders are: %s.'
-                        %(model_name, ', '.join(loader_list)))
-
-    # Get default args from the ModelLoader
-    model_loader = loader(args)
-    # Instantiate the model
-    model = model_loader()
-    # Defining optimizer
-    sgd = SGD(lr=args['lr'], momentum=0.9, decay=0.0, nesterov=True)
-    # Compiling model
-    model.compile(optimizer=sgd, loss='categorical_crossentropy',
-                  metrics=['accuracy'])
-
-    ## Instantiate the callbacks
-    # Schedule callback
-    schedule_cbk = None
-    if args['schedule']:
-        # Get schedule callback if there is a schedule
-        with open('schedules.yaml', 'r') as f:
-            schedules = yaml.load(f)
+    if args.load_checkpoint:
+        # Continue training
+        model = load_model(args.load_checkpoint)
+        meta = load_meta(args.load_checkpoint)
+        args.dataset = meta['training_args']['dataset']
+        arch = getattr(rme.models, meta['training_args']['architecture'])
+        training_args = meta['training_args']
+        chkpt_cbk = MetaCheckpoint(args.save_checkpoint, meta=meta)
+        initial_epoch = meta['epochs'][-1] + 1
+    else:
         try:
-            schedule_config = schedules[args['schedule']]
-        except KeyError:
-            raise Exception('Schedule %s not found. Available schedules are:\n%s'
-                           %(args['schedule'], ', '.join(schedules.keys())))
-        schedule_cbk = schedule_config['class'](*schedule_config['args'], verbose=1)
-        callback_list.append(schedule_cbk)
+            arch = getattr(rme.models, args.architecture)
+            # arch = available_archs[args.architecture]
+        except KeyError as e:
+            raise ValueError('Architecture %s is not available.' %args.architecture)
 
-    # ModelCheckpoint callback
-    if args['save'] is None:
-        args['save'] = default_save
-    file_name = args['save'] + '.h5'
-    model_cbk = ModelCheckpoint(file_name)
-    callback_list.append(model_cbk)
+        parse_training_args(training_args, arch.default_args(args.dataset))
+        training_args['kwparams'] = parse_kwparams(args.kwparams)
 
-    # MetaCheckpoint callback
-    meta_file_name = args['save'] + '.meta'
-    meta_cbk = MetaCheckpoint(meta_file_name, schedule=schedule_cbk,
-                              training_args=args)
-    callback_list.append(meta_cbk)
+        chkpt_cbk = MetaCheckpoint(args.save_checkpoint, training_args=training_args)
 
-try:
-    dataset = getattr(datasets, args['dataset'])
-except AttributeError:
-    datasets_list = clean_dir_list(dir(datasets))
-    raise Exception(('Dataset %s is not available. '
-                     'Available datasets are:\n%s.')
-                    %(args['dataset'], ', '.join(datasets_list)))
+        model = arch.model(args.dataset, **training_args['kwparams'])
+        opt = SGD(lr=training_args['lr'], momentum=0.9, nesterov=True)
 
-train_set, valid_set, test_set, _, _ = dataset.load(os.path.join('data',
-                                                    args['dataset']))
+        model.compile(optimizer=opt, loss='categorical_crossentropy',
+                      metrics=['accuracy'])
 
-if valid_set is None or valid_set['data'].size == 0:
-    valid_set = test_set
+        initial_epoch = 0
 
-nb_epoch = args['epochs'] - epoch_offset
+    # Load dataset
+    print('Loading dataset: %s' %training_args['dataset'])
+    if args.dataset == 'mnist':
+        train_set, valid_set, test_set = datasets.mnist.load('data/mnist')
+    elif args.dataset == 'cifar10':
+        train_set, valid_set, test_set = datasets.cifar10.load('data/cifar10')
+    elif args.dataset == 'cifar100':
+        train_set, valid_set, test_set = datasets.cifar100.load('data/cifar100')
+    elif args.dataset == 'svhn':
+        train_set, valid_set, test_set = datasets.svhn.load('data/svhn')
+    else:
+        raise NotImplementedError('Dataset %s is not available.' %training_args['dataset'])
 
-model.fit(train_set['data'], train_set['labels'],
-          batch_size=args['batch_size'], nb_epoch=nb_epoch, verbose=2,
-          validation_data=(valid_set['data'], valid_set['labels']),
-          callbacks=callback_list, shuffle=True)
+    # Preprocess it
+    print('Preprocessing dataset: %s' %training_args['dataset'])
+    if training_args['preprocessing']:
+        try:
+            preprocess_fun = getattr(rme.preprocessing, training_args['preprocessing'])
+            print('Using custom preprocessing: %s' %training_args['preprocessing'])
+        except AttributeError:
+            raise NotImplementedError('Preprocessing %s is not availabe' %training_args['preprocessing'])
+    else:
+        print('Using standard preprocessing for architecture %s' %training_args['architecture'])
+        preprocess_fun = arch.preprocess_data
+
+    (train_set['data'], valid_set['data'],
+     test_set['data']) = preprocess_fun(train_set['data'],
+                                        valid_set['data'],
+                                        test_set['data'], args.dataset)
+
+    callbacks = [chkpt_cbk]
+
+    if valid_set is None or valid_set['data'].size == 0:
+        print('No validation set, using test set as validation data.')
+        validation_data = (test_set['data'], test_set['labels'])
+    else:
+        chkpt_path, chkpt_name = os.path.split(training_args['save_checkpoint'])
+        best_model_name = os.path.join(chkpt_path, 'best_' + chkpt_name)
+        print('Saving model with best validation accuracy with name %s.'
+              %best_model_name)
+        best_cbk = MetaCheckpoint(best_model_name, save_best_only=True,
+                                   training_args=training_args)
+        validation_data = (valid_set['data'], valid_set['labels'])
+        # Append it to callbacks list
+        callbacks.append(best_cbk)
+
+    if training_args['schedule'] != 'none':
+        # Set learning rate schedule
+        if training_args['schedule'] is None:
+            # Use default
+            schedule_fun = arch.schedule
+        else:
+            try:
+                schedule_fun = getattr(rme.schedules, training_args['schedule'])
+            except AttributeError:
+                raise NotImplementedError('Schedule %s is not availabe' %training_args['schedule'])
+            # raise NotImplementedError('You should implement custom schedules.')
+        schedule = schedule_fun(training_args['dataset'], training_args['lr'])
+        callbacks.append(schedule)
+    else:
+        # Use fixed learning rate
+        print('No learning rate scheduling. Learning rate will be constant')
+
+
+    print('Training with:')
+    print('%s' %str(training_args))
+
+    if training_args['augmented']:
+        print('Training with data augmentation: crops and flips.')
+        data_gen = ImageDataGenerator(horizontal_flip=True,
+                                      width_shift_range=0.125,
+                                      height_shift_range=0.125,
+                                      fill_mode='constant')
+        data_iter = data_gen.flow(train_set['data'], train_set['labels'],
+                                  batch_size=training_args['batch_size'],
+                                  shuffle=True)
+
+        model.fit_generator(data_iter,
+                            samples_per_epoch=train_set['data'].shape[0],
+                            nb_epoch=training_args['epochs'],
+                            validation_data=(test_set['data'],
+                                             test_set['labels']),
+                            callbacks=callbacks, initial_epoch=initial_epoch)
+    else:
+        model.fit(train_set['data'], train_set['labels'],
+                  batch_size=training_args['batch_size'],
+                  nb_epoch=training_args['epochs'],
+                  validation_data=validation_data,
+                  callbacks=callbacks, initial_epoch=initial_epoch,
+                  shuffle=True)
+
+    test_loss, test_acc = model.evaluate(test_set['data'], test_set['labels'],
+                                         verbose=2)
+    print('Test set loss = %g. Test set accuracy = %g' %(test_loss, test_acc))
