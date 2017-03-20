@@ -1,4 +1,5 @@
 import keras
+import keras.backend as K
 from keras.models import Model
 from keras.layers import (Input, Convolution2D, Activation, BatchNormalization,
                           merge, GlobalAveragePooling2D, Dense, Dropout)
@@ -66,7 +67,7 @@ def two_conv_layer(x, num_channels, kernel_size, l2_reg, stride=1,
     return out
 
 
-def residual_block(x, num_channels, kernel_size, l2_reg, bottleneck,
+def residual_block(x, num_channels, kernel_size, l2_reg, bottleneck, stride=1,
                    first=False, name=''):
     '''
     Resnet residual block. Output is the sum of the layer's output and the
@@ -74,17 +75,33 @@ def residual_block(x, num_channels, kernel_size, l2_reg, bottleneck,
     '''
     if bottleneck:
         out = bottleneck_layer(x, num_channels, kernel_size, l2_reg,
-                               first=first, name=name)
-        if first:
-            # Shortcut needs mapping for the first bottleneck layer
-            x = Convolution2D(num_channels * 4, 1, 1,
-                              border_mode='valid', init='he_normal',
-                              W_regularizer=l2(l2_reg), bias=False,
-                              name=name + '_shortcut_proj')(x)
+                               stride=stride, first=first, name=name)
+        # if first:
+        #     # Shortcut needs mapping for the first bottleneck layer
+        #     x = Convolution2D(num_channels * 4, 1, 1,
+        #                       border_mode='valid', init='he_normal',
+        #                       W_regularizer=l2(l2_reg), bias=False,
+        #                       name=name + '_shortcut_proj')(x)
     else:
         out = two_conv_layer(x, num_channels, kernel_size, l2_reg,
-                             first=first, name=name)
-    out = merge([x, out], mode='sum', name=name + '_sum')
+                             stride=stride, first=first, name=name)
+
+    out_shape = K.int_shape(out)
+    if out_shape == K.int_shape(x): # Identity mapping
+        shortcut = x
+    else: # If dimensions change, we project the input to the new size
+        if first:
+            # Do not apply BN-ReLU
+            shortcut = x
+        else:
+            shortcut = BatchNormalization(name=name + '_shortcut_bn')(x)
+            shortcut = Activation('relu', name=name + '_shortcut_relu')(shortcut)
+        shortcut = Convolution2D(out_shape[-1], 1, 1, subsample=(stride, stride),
+                                 border_mode='valid',
+                                 init='he_normal', W_regularizer=l2(l2_reg),
+                                 bias=False, name=name + '_shortcut_conv')(shortcut)
+
+    out = merge([shortcut, out], mode='sum', name=name + '_sum')
     return out
 
 
@@ -125,8 +142,8 @@ def block_stack(x, num_channels, num_blocks, kernel_size, l2_reg, bottleneck,
         x = residual_block(x, num_channels, kernel_size, l2_reg, bottleneck,
                            first=True, name=name + '_resblock1')
     else:
-        x = downsample_block(x, num_channels, kernel_size, l2_reg, bottleneck,
-                             name=name + '_downsample')
+        x = residual_block(x, num_channels, kernel_size, l2_reg, bottleneck,
+                           stride=2, name=name + '_downsample')
     for i in range(num_blocks-1):
         x = residual_block(x, num_channels, kernel_size, l2_reg, bottleneck,
                            name=name + '_resblock%d' %(i + 2))
@@ -152,7 +169,7 @@ def model(dataset, num_blocks=18, width=1, bottleneck=True, l2_reg=1e-4):
     else:
         raise ValueError('Model is not defined for dataset: %s' %dataset)
 
-    o = Convolution2D(16*width, 3, 3, border_mode='same', init='he_normal',
+    o = Convolution2D(16, 3, 3, border_mode='same', init='he_normal',
                       W_regularizer=l2(l2_reg), bias=False)(x)
     o = BatchNormalization()(o)
     o = Activation('relu')(o)
