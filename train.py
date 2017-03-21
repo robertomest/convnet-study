@@ -18,8 +18,8 @@ from rme import preprocessing
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Train a model on the desired dataset.')
-    parser.add_argument('--architecture', type=str)
-    parser.add_argument('--dataset', type=str)
+    parser.add_argument('--architecture', type=str, required=True)
+    parser.add_argument('--dataset', type=str, required=True)
     parser.add_argument('--save_checkpoint', type=str, default='checkpoint.h5')
     parser.add_argument('--load_checkpoint', type=str, default=None)
     # Hyperparameters
