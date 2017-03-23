@@ -26,7 +26,7 @@ if __name__ == '__main__':
     parser.add_argument('--kwparams', type=str, nargs='+', default=None)
     # Training args
     parser.add_argument('--lr', type=float, default=None)
-    parser.add_argument('--batch_size', type=float, default=None)
+    parser.add_argument('--batch_size', type=int, default=None)
     parser.add_argument('--epochs', type=int, default=None)
     parser.add_argument('--schedule', type=str, default=None)
     parser.add_argument('--preprocessing', type=str, default=None)
