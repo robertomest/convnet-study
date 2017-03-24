@@ -2,6 +2,7 @@ import argparse
 
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 import tensorflow as tf
 
 import keras
@@ -58,6 +59,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Plot Class Activation Maps (CAM).')
     parser.add_argument('--checkpoint', type=str, required=True,
                         help='Path to the checkpoint file')
+    parser.add_argument('--alpha', type=float, default=0.3)
     # GPU args
     parser.add_argument('--gpu', type=str, default='')
     parser.add_argument('--allow_growth', default=False, action='store_true')
@@ -65,8 +67,11 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     config_gpu(args.gpu, args.allow_growth)
+    palette = sns.color_palette()
 
     meta = load_meta(args.checkpoint)
+
+    sns.set_style('whitegrid')
     # Fetch info from meta file
     dataset_name = meta['training_args']['dataset']
     arch = getattr(rme.models, meta['training_args']['architecture'])
@@ -88,35 +93,72 @@ if __name__ == '__main__':
     _, _, X = prep_fun(train_set['data'], valid_set['data'], test_set['data'], dataset_name)
     # data contains the unprocessed images, X contrains preprocessed images
 
-    # idx = np.random.randint(10000, size=(10,))
-    # idx = [2625, 4619, 7511, 5822, 7939, 5949, 2396, 8776, 8832, 2558]
-    idx = [7843, 5822, 7939, 8776, 2558, 5372, 7680, 8723, 3777, 5180]
-    # GOOD INDICES: [7843, 5822, 7939, 8776, 2558, 5372, 7680, 8723, 3777, 5180]
-    # 2625, 4619, 7511, 5822, 7939, 5949, 2396, 8776, 8832, 2558
-    # PLANE WITH DISTRACTION: 3155, 4605, 5778, 9023, 5805, 1108, 5089, 1083, 7843, 7833
+    idx = np.random.randint(10000, size=(10,))
+
+    # idx = [7843, 5822, 7939, 8776, 2558, 5372, 7680, 8723, 3777, 5180, 9514, 8728, 5678, 8302, 3669, 5337, 9820]
+
     print('Indices: %s' %(', '.join([str(i) for i in idx])))
     imgs = data[idx]
     y = test_set['labels'][idx]
     M, P = get_maps([X[idx], 0.])
 
-    classes = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
-    # classes = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten']
+    num_classes = 10
+    if dataset_name == 'cifar10':
+        classes = ['airplane', 'automobile', 'bird', 'cat', 'deer',
+                   'dog', 'frog', 'horse', 'ship', 'truck']
+    else:
+        classes = [str(i) for i in range(10)]
 
     for i in range(len(idx)):
         l = y[i]
-        m = M[i, :, :, P[i].argmax()]
+        pred = P[i].argmax()
+        m = M[i, :, :,pred]
         m -= m.min()
         m /= m.max()
         plt.figure()
-        plt.subplot(1, 3, 1)
-        plt.title('GT: %s' %classes[l])
-        plt.imshow(np.squeeze(imgs[i].astype('uint8')))
 
-        plt.subplot(1, 3, 2)
-        plt.imshow(m[:, :], cmap='gray')
-        plt.title('Predicted class: %s' %classes[P[i].argmax()])
-        plt.subplot(1, 3, 3)
-        # Merge two images
+        plt.subplot(2, 3, 1)
+        plt.imshow(np.squeeze(imgs[i].astype('uint8')))
+        plt.axis('off')
         plt.title('Image idx: %d' %idx[i])
-        plt.imshow(apply_map(m, imgs[i], 0.4))
+
+        plt.subplot(2, 3, 2)
+        plt.imshow(m[:, :], cmap='gray')
+        plt.axis('off')
+        plt.title('Predicted: %s' %classes[pred])
+
+        plt.subplot(2, 3, 3)
+        # Merge two images
+        plt.imshow(apply_map(m, imgs[i], args.alpha))
+        plt.axis('off')
+
+        plt.subplot(2, 3, 4)
+        height = 0.5
+        pos = np.arange(num_classes) - height/2
+        plt.barh(pos, P[i], height=height, color=palette[0])
+        plt.barh(pos[pred], P[i][pred], height=height, color=palette[2])
+        plt.barh(pos[l], P[i][l], height=height, color=palette[1])
+        plt.xlim([0, 1])
+        plt.ylim([-0.5, 9.5])
+        plt.yticks(np.arange(10), classes)
+        plt.title('Class probabilities')
+
+        m = M[i, :, :, l]
+        m -= m.min()
+        m /= m.max()
+        plt.subplot(2, 3, 5)
+        plt.imshow(m[:, :], cmap='gray')
+        plt.axis('off')
+        plt.title('GT: %s' %classes[l])
+
+        plt.subplot(2, 3, 6)
+        # Merge two images
+        plt.imshow(apply_map(m, imgs[i], args.alpha))
+        plt.axis('off')
+
+        print('Image index: %d' %idx[i])
+        print('Class probabilities:')
+        for c, p in zip(classes, P[i]):
+            print(' %s: %g' %(c, p))
+
         plt.show()
